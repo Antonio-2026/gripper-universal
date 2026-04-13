@@ -1,18 +1,19 @@
-"""Main PyQt5 window for universal gripper control."""
+"""PyQt5 main window for the Universal Gripper Control desktop app."""
 
 from __future__ import annotations
 
 from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import (
-    QGridLayout,
+    QComboBox,
+    QFormLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QMainWindow,
     QPushButton,
     QSlider,
-    QStatusBar,
+    QSpinBox,
+    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -21,120 +22,150 @@ from gripper_control.core.models import IndicatorColor
 
 
 class MainWindow(QMainWindow):
-    """Presentation-only UI layer. Business logic is injected via signals."""
+    """UI layer with no direct hardware logic."""
 
     connect_clicked = pyqtSignal()
     initialize_clicked = pyqtSignal()
     open_clicked = pyqtSignal()
     close_clicked = pyqtSignal()
-    position_changed = pyqtSignal(int)
-    force_changed = pyqtSignal(int)
-    speed_changed = pyqtSignal(int)
 
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("Universal Gripper Control")
-        self.resize(680, 420)
+        self.resize(820, 580)
 
-        root = QWidget()
+        root = QWidget(self)
         self.setCentralWidget(root)
-        main_layout = QVBoxLayout(root)
+        layout = QVBoxLayout(root)
 
-        main_layout.addWidget(self._build_controls_group())
-        main_layout.addWidget(self._build_action_group())
-        main_layout.addWidget(self._build_status_group())
+        layout.addWidget(self._build_connection_section())
+        layout.addWidget(self._build_motion_section())
+        layout.addWidget(self._build_action_buttons())
+        layout.addWidget(self._build_status_section())
+        layout.addWidget(self._build_log_section(), stretch=1)
 
-        self.status_bar = QStatusBar()
-        self.setStatusBar(self.status_bar)
-        self.status_bar.showMessage("Ready")
+    def _build_connection_section(self) -> QGroupBox:
+        group = QGroupBox("Connection")
+        form = QFormLayout(group)
 
-    def _build_controls_group(self) -> QGroupBox:
-        box = QGroupBox("Motion & Force Controls")
-        layout = QGridLayout(box)
+        self.port_combo = QComboBox()
+        self.port_combo.addItems([f"COM{i}" for i in range(1, 11)])
+        self.port_combo.setCurrentText("COM3")
 
-        self.position_slider = self._make_slider(0, 100, 0)
-        self.force_slider = self._make_slider(20, 100, 20)
-        self.speed_slider = self._make_slider(0, 100, 30)
+        self.baud_combo = QComboBox()
+        self.baud_combo.addItems(["9600", "19200", "38400", "57600", "115200"])
+        self.baud_combo.setCurrentText("115200")
 
-        self.position_label = QLabel("Position: 0%")
-        self.force_label = QLabel("Force: 20%")
-        self.speed_label = QLabel("Speed: 30%")
+        self.slave_spin = QSpinBox()
+        self.slave_spin.setRange(1, 247)
+        self.slave_spin.setValue(1)
 
-        self.position_slider.valueChanged.connect(self._on_position_slider)
-        self.force_slider.valueChanged.connect(self._on_force_slider)
-        self.speed_slider.valueChanged.connect(self._on_speed_slider)
+        form.addRow("COM Port", self.port_combo)
+        form.addRow("Baudrate", self.baud_combo)
+        form.addRow("Slave ID", self.slave_spin)
+        return group
 
-        layout.addWidget(self.position_label, 0, 0)
-        layout.addWidget(self.position_slider, 0, 1)
+    def _build_motion_section(self) -> QGroupBox:
+        group = QGroupBox("Motion Controls")
+        form = QFormLayout(group)
 
-        layout.addWidget(self.force_label, 1, 0)
-        layout.addWidget(self.force_slider, 1, 1)
+        self.position_slider = self._slider()
+        self.force_slider = self._slider(50)
+        self.speed_slider = self._slider(50)
 
-        layout.addWidget(self.speed_label, 2, 0)
-        layout.addWidget(self.speed_slider, 2, 1)
+        self.position_value_label = QLabel("50%")
+        self.force_value_label = QLabel("50%")
+        self.speed_value_label = QLabel("50%")
 
-        return box
+        self.position_slider.valueChanged.connect(lambda v: self.position_value_label.setText(f"{v}%"))
+        self.force_slider.valueChanged.connect(lambda v: self.force_value_label.setText(f"{v}%"))
+        self.speed_slider.valueChanged.connect(lambda v: self.speed_value_label.setText(f"{v}%"))
 
-    def _build_action_group(self) -> QGroupBox:
-        box = QGroupBox("Actions")
-        layout = QHBoxLayout(box)
+        form.addRow(self._line_with_value("Position", self.position_value_label), self.position_slider)
+        form.addRow(self._line_with_value("Force", self.force_value_label), self.force_slider)
+        form.addRow(self._line_with_value("Speed", self.speed_value_label), self.speed_slider)
 
-        self.connect_btn = QPushButton("Connect")
-        self.initialize_btn = QPushButton("Initialize")
-        self.open_btn = QPushButton("Open")
-        self.close_btn = QPushButton("Close")
+        return group
 
-        self.connect_btn.clicked.connect(self.connect_clicked.emit)
-        self.initialize_btn.clicked.connect(self.initialize_clicked.emit)
-        self.open_btn.clicked.connect(self.open_clicked.emit)
-        self.close_btn.clicked.connect(self.close_clicked.emit)
+    def _build_action_buttons(self) -> QGroupBox:
+        group = QGroupBox("Actions")
+        row = QHBoxLayout(group)
 
-        for btn in [self.connect_btn, self.initialize_btn, self.open_btn, self.close_btn]:
-            btn.setMinimumHeight(40)
-            layout.addWidget(btn)
+        self.connect_button = QPushButton("Connect")
+        self.initialize_button = QPushButton("Initialize")
+        self.open_button = QPushButton("Open")
+        self.close_button = QPushButton("Close")
 
-        return box
+        self.connect_button.clicked.connect(self.connect_clicked.emit)
+        self.initialize_button.clicked.connect(self.initialize_clicked.emit)
+        self.open_button.clicked.connect(self.open_clicked.emit)
+        self.close_button.clicked.connect(self.close_clicked.emit)
 
-    def _build_status_group(self) -> QGroupBox:
-        box = QGroupBox("Status")
-        layout = QHBoxLayout(box)
+        for button in [self.connect_button, self.initialize_button, self.open_button, self.close_button]:
+            button.setMinimumHeight(36)
+            row.addWidget(button)
 
-        self.indicator = QLabel("●")
-        self.indicator.setStyleSheet("font-size: 28px; color: gray;")
-        self.status_label = QLabel("Disconnected")
-        self.status_label.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+        return group
 
-        layout.addWidget(self.indicator)
-        layout.addWidget(self.status_label)
-        layout.addStretch(1)
+    def _build_status_section(self) -> QGroupBox:
+        group = QGroupBox("Status")
+        row = QHBoxLayout(group)
 
-        return box
+        self.status_dot = QLabel("●")
+        self.status_dot.setStyleSheet("font-size: 24px; color: #9E9E9E;")
+        self.status_text = QLabel("Disconnected")
 
-    def _make_slider(self, minimum: int, maximum: int, value: int) -> QSlider:
+        row.addWidget(self.status_dot)
+        row.addWidget(self.status_text)
+        row.addStretch(1)
+        return group
+
+    def _build_log_section(self) -> QGroupBox:
+        group = QGroupBox("Log")
+        wrapper = QVBoxLayout(group)
+
+        self.log_text = QTextEdit()
+        self.log_text.setReadOnly(True)
+        wrapper.addWidget(self.log_text)
+        return group
+
+    def read_connection_values(self) -> tuple[str, int, int]:
+        return self.port_combo.currentText(), int(self.baud_combo.currentText()), int(self.slave_spin.value())
+
+    def position_value(self) -> int:
+        return int(self.position_slider.value())
+
+    def force_value(self) -> int:
+        return int(self.force_slider.value())
+
+    def speed_value(self) -> int:
+        return int(self.speed_slider.value())
+
+    def set_status(self, label: str, color: IndicatorColor) -> None:
+        palette = {
+            IndicatorColor.GREEN: "#2ECC71",
+            IndicatorColor.RED: "#E53935",
+            IndicatorColor.GRAY: "#9E9E9E",
+        }
+        self.status_dot.setStyleSheet(f"font-size: 24px; color: {palette[color]};")
+        self.status_text.setText(label)
+
+    def append_log(self, message: str) -> None:
+        self.log_text.append(message)
+
+    @staticmethod
+    def _slider(value: int = 50) -> QSlider:
         slider = QSlider(Qt.Horizontal)
-        slider.setRange(minimum, maximum)
+        slider.setRange(0, 100)
         slider.setValue(value)
         return slider
 
-    def _on_position_slider(self, value: int) -> None:
-        self.position_label.setText(f"Position: {value}%")
-        self.position_changed.emit(value)
-
-    def _on_force_slider(self, value: int) -> None:
-        self.force_label.setText(f"Force: {value}%")
-        self.force_changed.emit(value)
-
-    def _on_speed_slider(self, value: int) -> None:
-        self.speed_label.setText(f"Speed: {value}%")
-        self.speed_changed.emit(value)
-
-    def set_status(self, text: str, color: IndicatorColor) -> None:
-        palette = {
-            IndicatorColor.GREEN: QColor("#2ecc71").name(),
-            IndicatorColor.BLUE: QColor("#3498db").name(),
-            IndicatorColor.RED: QColor("#e74c3c").name(),
-            IndicatorColor.GRAY: QColor("#9e9e9e").name(),
-        }
-        self.indicator.setStyleSheet(f"font-size: 28px; color: {palette[color]};")
-        self.status_label.setText(text)
-        self.status_bar.showMessage(text)
+    @staticmethod
+    def _line_with_value(label: str, value: QLabel) -> QWidget:
+        holder = QWidget()
+        row = QHBoxLayout(holder)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.addWidget(QLabel(label))
+        row.addStretch(1)
+        row.addWidget(value)
+        return holder
