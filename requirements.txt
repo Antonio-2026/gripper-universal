@@ -1,0 +1,3 @@
+pyserial
+pymodbus
+PyQt5
