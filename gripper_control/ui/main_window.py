@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from PyQt5.QtCore import Qt, pyqtSignal
+import serial.tools.list_ports
+
 from PyQt5.QtWidgets import (
     QComboBox,
     QFormLayout,
@@ -49,8 +51,16 @@ class MainWindow(QMainWindow):
         form = QFormLayout(group)
 
         self.port_combo = QComboBox()
-        self.port_combo.addItems([f"COM{i}" for i in range(1, 11)])
-        self.port_combo.setCurrentText("COM3")
+
+        def get_available_ports() -> list[str]:
+            ports = serial.tools.list_ports.comports()
+            return [port.device for port in ports]
+
+        ports = get_available_ports()
+        self.port_combo.addItems(ports)
+
+        if "COM3" in ports:
+            self.port_combo.setCurrentText("COM3")
 
         self.baud_combo = QComboBox()
         self.baud_combo.addItems(["9600", "19200", "38400", "57600", "115200"])

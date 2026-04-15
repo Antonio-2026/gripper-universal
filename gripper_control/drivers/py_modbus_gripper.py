@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pymodbus.client import ModbusSerialClient
+from pymodbus.client.sync import ModbusSerialClient
 
 from gripper_control.core.models import ConnectionConfig
 
@@ -17,19 +17,21 @@ class DHModbusGripper:
 
     def __init__(self, config: ConnectionConfig) -> None:
         self.config = config
-        self.client = ModbusSerialClient(
-            port=config.port,
-            baudrate=config.baudrate,
+        self._client = ModbusSerialClient(
+            method="rtu",
+            port=self.config.port,
+            baudrate=self.config.baudrate,
+            timeout=1,
             parity="N",
             stopbits=1,
             bytesize=8,
-            timeout=config.timeout,
         )
+        self.client = self._client
 
     def connect(self) -> bool:
         """Open serial connection."""
 
-        return bool(self.client.connect())
+        return bool(self._client.connect())
 
     def initialize(self) -> None:
         self._write_register(self.REG_INIT, 1)
@@ -45,6 +47,6 @@ class DHModbusGripper:
         self._write_register(self.REG_POSITION, 1000)
 
     def _write_register(self, register: int, value: int) -> None:
-        response = self.client.write_register(address=register, value=value, device_id=self.config.slave_id)
+        response = self._client.write_register(address=register, value=value, unit=self.config.slave_id)
         if response.isError():
             raise RuntimeError(f"Modbus write failed at 0x{register:04X}: {response}")
